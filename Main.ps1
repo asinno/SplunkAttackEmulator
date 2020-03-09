@@ -23,6 +23,27 @@ Add-Type -TypeDefinition @'
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 [System.Net.ServicePointManager]::CertificatePolicy = New-Object -TypeName TrustAllCertsPolicy
 
+#Compile list of domains for randomization
+$MaliciousDomainList = @(
+  'differentia.ru',
+  'badwebsite.su',
+  'malicious.cn',
+  'posqit.net',
+  'martiq.org',
+  'sucuritester.com',
+  'milos.hostelbobi.com'
+)
+
+#Create Static Web Port list
+$WebPortList = @(
+'80',
+'443',
+'8080'
+)
+
+#Dynamic Port Variable for Randomization
+$DynamicPortRange = 49152..65535
+
 #Create JSON bodies for sending to splunk
 #Splunk Arbitration Execution
    $PowershellArbEvent = ConvertTo-Json -InputObject @{ 
@@ -58,7 +79,7 @@ Add-Type -TypeDefinition @'
       } -Compress
 
 # Command and Control Traffic based on Threat Intelligence  
-  $C2Event = ConvertTo-Json -InputObject @{  
+  $C2Event = 'ConvertTo-Json -InputObject @{  
      host = "192.168.1.253";
      source = "tcp:514";
      sourcetype = "pan:traffic";
@@ -68,10 +89,10 @@ Add-Type -TypeDefinition @'
        bytes = "12984";
        bytes_in = "8448";
        bytes_out = "4536";
-       dest = "differentia.ru";
+       dest = Get-Random $MaliciousDomainList;
        dest_interface = "ethernet1/1";
        dest_ip = "72.34.250.78";
-       dest_port = "80";
+       dest_port = Get-Random $WebPortList;
        dest_translated_ip = "72.34.250.78";
        dest_translated_port = "443";
        dest_zone = "Untrust-L3";
@@ -83,12 +104,12 @@ Add-Type -TypeDefinition @'
        packets_in = "12";
        packets_out = "14";
        process_hash = "unknown";
-       rule = "Allow Web Browsers Access";
+       rule = "Allow Web Browser Access";
        session_id = "16646";
        src = "192.168.1.36";
        src_interface = "vlan";
        src_ip = "192.168.1.36";
-       src_port = "62833";
+       src_port = Get-Random -InputObject $DynamicPortRange;
        src_translated_ip = "212.36.195.250";
        src_translated_port = "30429";
        src_zone =" Trust-L3";
@@ -96,7 +117,7 @@ Add-Type -TypeDefinition @'
        user = "Badlarry";
        vendor_product = "Palo Alto Networks Firewall";
      }
-   } -Compress
+   } -Compress'
  
 
 function Start-SplunkIncidentEmulation {
@@ -111,22 +132,32 @@ function Start-SplunkIncidentEmulation {
     [Parameter(Mandatory=$true)]
     [String]$SplunkPort,
     [Parameter(Mandatory=$true)]
-    [String]$Token
-     
+    [String]$Token,
+    [String]$ExecutionCount
   )
+  if($ExecutionCount -eq $null){
+  $ExecutionCount -eq 1
+  }
   $HashTableEmulationType = @{
     'PwshArbitraryCommandExecution' = $PowershellArbEvent
     'PhoneHomeIntelligence' = $C2Event
     'DNSAnomalousMultipleConnections' = $NADA
     }
     
-    $Event = $HashTableEmulationType[$Emulation]
+    
     #Create Header to receive TOKEN
     $Headers = New-Object "System.Collections.Generic.Dictionary[[String],[String]]"
     $Headers.Add("Authorization", "Splunk $Token")
     #Create Splunk Server variable to hand IP and Port
     $SplunkServer = "https://{0}:{1}/services/collector/event" -f $SplunkIP,$SplunkPort
-    Invoke-RestMethod -Uri $SplunkServer -Method Post -Headers $headers -Body $Event
+    $ExecutionIteration = 0
+    
+    while($ExecutionIteration -lt $ExecutionCount){
+      $Event = Invoke-Expression ($HashTableEmulationType[$Emulation])
+      #$Event
+      Invoke-RestMethod -Uri $SplunkServer -Method Post -Headers $headers -Body $Event
+      $ExecutionIteration++
+    }
 }
  
  function Start-SonicEmulator {
@@ -154,13 +185,12 @@ function Start-SplunkIncidentEmulation {
      Invoke-Expression ($Prompt)
      $Choice = Read-Host
      if ($Choice -eq 0){
-       "[Starting Powershell-Based Attacks]"
+       Write-Host "[Starting Powershell-Based Attacks]" -ForegroundColor Yellow
        $Result = Start-SplunkIncidentEmulation -SplunkIP:$SplunkServer -SplunkPort:$SplunkPort -Token:$Token -ComputerName:$ComputerName -Emulation PwshArbitraryCommandExecution
-       if($Result.text -eq 'Success'){
-         Write-Host '[PowerShell Arbitrary Execution Successful]' -ForegroundColor Green
-         Read-Host 'Press any key to continue'
-       }
-     
+       Write-Host "[Powershell-Based Execution Complete] Status:"$Result.text -ForegroundColor Green
+       Write-Host "[Starting C2 Emulation]" -ForegroundColor Yellow
+       $Result = Start-SplunkIncidentEmulation -SplunkIP:$SplunkServer -SplunkPort:$SplunkPort -Token:$Token -ComputerName:$ComputerName -Emulation PhoneHomeIntelligence -ExecutionCount 100
+       Write-Host "[Starting C2 Emulation Complete] Status:"$Result.text -ForegroundColor Green
      }
    }
  }
