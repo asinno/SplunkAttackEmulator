@@ -78,17 +78,22 @@ Add-Type -TypeDefinition @'
  }
  
  function Start-SonicEmulator {
+   # Please declare your variables here
+   #$SplunkServer = x.x.x.x
+   #$SplunkPort = 8088
+   #$Token = HEC TOKEN
+   
    $Prompt =
    "Write-Host '<=So' -ForegroundColor Yellow -NoNewline; Write-Host 'nic' -ForegroundColor Red -NoNewline; Write-Host 'Emu=>' -ForegroundColor Blue -NoNewline"
-        
-     "Welcome to Sonic Emulator please fill the following variables so that we may begin testing"
-     "(Splunk Server IP)"
-     $SplunkServer = Read-Host
-     "(Splunk Server Port)"
-     $SplunkPort = Read-Host
-     "(Token)"
-     $Token = Read-Host
-   
+     while ($SplunkServer -or $SplunkPort -or $Token -eq $null){
+       "We have detected null values in your splunk server variable set, please fill the following variables so that we may begin testing"
+       "(Splunk Server IP)"
+       $SplunkServer = Read-Host
+       "(Splunk Server Port)"
+       $SplunkPort = Read-Host
+       "(Token)"
+       $Token = Read-Host
+     }
    :outer while($true){
      Clear
      $MenuIcon
